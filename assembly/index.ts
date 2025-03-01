@@ -18,7 +18,8 @@ let cubeZ!: Cube;
 
 
 let lightAmbient!: AmbientLight;
-let lightDirectional!: DirectionalLight;
+let lightDirectional1!: DirectionalLight;
+let lightDirectional2!: DirectionalLight;
 let scene!: Scene;
 let camera!: PerspectiveCamera;
 let tree!: ActrOctree;
@@ -65,15 +66,19 @@ export function actr_init(w: i32, h: i32): void {
   // geo = new BoxGeometry(1, 1, 1);
   // y == up
 
-  lightAmbient = new AmbientLight(0xffffff, 0.5);
-  lightDirectional = new DirectionalLight(0xb36ff6, 0.5);
+  // lightAmbient = new AmbientLight(0xffffff, 0.01);
+  //lightDirectional1 = new DirectionalLight(0xd900ff, 0.5);
+  lightDirectional1 = new DirectionalLight(0xffffff, 1);
+  lightDirectional2 = new DirectionalLight(0xffffff, 0.01);
   // light2 = new DirectionalLight(0x000000);
 
 
-  lightDirectional.position = new Vector3(1000, 0, 0);
+  lightDirectional1.position = new Vector3(1000, -10, 0);
+  lightDirectional2.position = new Vector3(-1000, 10, 0);
 
-  scene.add(lightDirectional);
-  scene.add(lightAmbient);
+  scene.add(lightDirectional1);
+  scene.add(lightDirectional2);
+  //scene.add(lightAmbient);
   //actr_three_scene_add(light2.identity);
   //actr_three_scene_add(roid.identity);
 
