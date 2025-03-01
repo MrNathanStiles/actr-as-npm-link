@@ -44,7 +44,7 @@ let noise!: PerlinNoise;
 
 function surfaceNetStuff(scene: Scene): void {
   noise = new PerlinNoise(true);
-  const row1 = StaticArray.fromArray<f32>([-1.0, 1.0, 0.1]);
+  const row1 = StaticArray.fromArray<f32>([-1.0, 1.0, 0.05]);
   const dims = StaticArray.fromArray([row1, row1, row1]);
   const gen = new SurfaceNetGenerator();
   const surfaceNet = gen.makeData(dims, asteroidPointGen).generateNet();
@@ -56,7 +56,7 @@ export function actr_init(w: i32, h: i32): void {
   actr_three_init(90, 1, 1001);
   scene = new Scene();
   camera = new PerspectiveCamera(90, 0.1, 5000.1)
-  camera.position = new Vector3(0, 1, 0)
+  camera.position = new Vector3(0, 0, 0)
   camera.lookAt(0, 0, 0);
   tree = new ActrOctree(true, -32, -32, 32, 64, null, scene);
 
@@ -78,15 +78,15 @@ export function actr_init(w: i32, h: i32): void {
   //actr_three_scene_add(roid.identity);
 
   cubeO = Cube.makeSimple(0.1, 0, 0, 0, 0xffffff);
-  cubeO.addToScene(scene);
+  //cubeO.addToScene(scene);
 
-  cubeX = Cube.makeSimple(10, 100, 0, 0, 0xff0000);
+  cubeX = Cube.makeSimple(1, 110, 0, 0, 0xff0000);
   cubeX.addToScene(scene);
 
-  cubeY = Cube.makeSimple(10, 0, 100, 0, 0x00ff00);
+  cubeY = Cube.makeSimple(1, 0, 110, 0, 0x00ff00);
   cubeY.addToScene(scene);
 
-  cubeZ = Cube.makeSimple(10, 0, 0, -100, 0x0000ff);
+  cubeZ = Cube.makeSimple(1, 0, 0, -110, 0x0000ff);
   cubeZ.addToScene(scene);
 
   //cubeX.addToTree(tree);
@@ -127,7 +127,7 @@ export function actr_pointer_tap(x: i32, y: i32): void {
 }
 
 let stage: f32 = 0;
-let dist: f32 = 10;
+let dist: f32 = 100;
 let step: i32 = 0;
 
 function br(): f64 {
