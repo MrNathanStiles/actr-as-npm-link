@@ -1,12 +1,17 @@
 import {
-  actr_log,
-  actr_three_init, actr_three_render, ActrOctree, ActrPoint3, AmbientLight, DirectionalLight,
-  ftoi,
-  PerlinNoise, PerspectiveCamera, Scene, SurfaceNet, SurfaceNetGenerator, Vector3
+  actr_log, actr_three_init, actr_three_render, ActrOctree, ActrPoint3D,
+  ActrPoint3F, ActrPoint3I, ActrPoint3L, ActrSize3I, AmbientLight, DirectionalLight,
+  DTOL,
+  FTOI,
+  FTOL,
+  PerlinNoise, PerspectiveCamera, Scene, SurfaceNet, SurfaceNetGenerator,
 } from '@actr-wasm/as';
 import { Cube } from '@actr-wasm/as/src/cube';
 import { ActrOctreeBounds } from '@actr-wasm/as/src/octree-bounds';
 import { ActrOctreeLeaf } from '@actr-wasm/as/src/octree-leaf';
+import { results } from './test-octree';
+import { ServiceProvider } from './service-container/service-provider';
+import { initializeServiceProvider, Services } from './service-container/container';
 
 export { actr_construct } from '@actr-wasm/as';
 
@@ -19,16 +24,16 @@ let cubeY!: Cube;
 let cubeZ!: Cube;
 
 
-let lightAmbient!: AmbientLight;
 let lightDirectional1!: DirectionalLight;
 let lightDirectional2!: DirectionalLight;
-let scene!: Scene;
-let camera!: PerspectiveCamera;
-let tree!: ActrOctree;
+
+
 // let light2!: DirectionalLight;
 
 function spherePointGen(x: f32, y: f32, z: f32): f32 {
-  return x * x + y * y + z * z - 1;
+  const result = x * x + y * y + z * z - 1;
+  //actr_log(`sph ${x},${y},${z} = ${result}`);
+  return result;
 }
 
 function asteroidPointGen(x: f32, y: f32, z: f32): f32 {
@@ -45,26 +50,35 @@ function sinWave(x: f32, y: f32, z: f32): f32 {
 
 const noise: PerlinNoise = new PerlinNoise(true);;
 
-let lastGrid: ActrPoint3 = new ActrPoint3(0, 0, 0);
+
 
 const asteroids = new Array<SurfaceNet>();
-function makeAsteroid(position: Vector3): void {
-  noise.shuffle();
-  const row1 = StaticArray.fromArray<f32>([-1.0, 1.0, 0.1]);
+function makeAsteroid(position: ActrPoint3F): bool {
+
+  const area = new ActrOctreeBounds(FTOL(position.x) - 3, FTOL(position.y) - 3, FTOL(position.z) + 3, 6);
+
+  const result = tree.query(area);
+  if (result.length) return false;
+  const row1 = StaticArray.fromArray<f32>([-1.0, 1.0, 0.3]);
   const dims = StaticArray.fromArray([row1, row1, row1]);
   const gen = new SurfaceNetGenerator();
   const surfaceNet = gen.makeData(dims, asteroidPointGen).generateNet();
   asteroids.push(surfaceNet);
   surfaceNet.position = position;
-  surfaceNet.addToScene(scene);
+  surfaceNet.addToScene(services.getService<Scene>(Services.Scene));
   const leaf = new ActrOctreeLeaf(
-    ftoi(position.x),
-    ftoi(position.y),
-    ftoi(position.z),
-    1, 1, 1,
+    DTOL(Math.floor(position.x - surfaceNet.size.w / 2)),
+    DTOL(Math.floor(position.y - surfaceNet.size.h / 2)),
+    DTOL(Math.ceil(position.z + surfaceNet.size.d / 2)),
+    FTOI(Mathf.max(surfaceNet.size.w + 1, 2)),
+    FTOI(Mathf.max(surfaceNet.size.h + 1, 2)),
+    FTOI(Mathf.max(surfaceNet.size.d + 1, 2)),
     surfaceNet.identity
   );
+  //actr_log(`${leaf}`);
   tree.insert(leaf);
+  noise.shuffle();
+  return true;
   //tree.insertSurfaceNet(surfaceNet);
 }
 
@@ -74,39 +88,46 @@ function logit(val: f32): void {
 }
 
 const GRID_SIZE: i64 = 512;
-function togrid(point: ActrPoint3): ActrPoint3 {
-  return new ActrPoint3(
-    (point.x < 0 ? (point.x - GRID_SIZE) : point.x) / GRID_SIZE,
-    (point.y < 0 ? (point.y - GRID_SIZE) : point.y) / GRID_SIZE,
-    (point.z < 0 ? (point.z - GRID_SIZE) : point.z) / GRID_SIZE,
+function togrid(point: ActrPoint3D): ActrPoint3L {
+  const x = DTOL(point.x);
+  const y = DTOL(point.y);
+  const z = DTOL(point.z);
+  return new ActrPoint3L(
+    (x < 0 ? (x - GRID_SIZE) : x) / GRID_SIZE,
+    (y < 0 ? (y - GRID_SIZE) : y) / GRID_SIZE,
+    (z < 0 ? (z - GRID_SIZE) : z) / GRID_SIZE,
   );
 }
-function fromgrid(point: ActrPoint3): ActrPoint3 {
-  return new ActrPoint3(
+function fromgrid(point: ActrPoint3I): ActrPoint3D {
+  return new ActrPoint3D(
     point.x * GRID_SIZE,
     point.y * GRID_SIZE,
     point.z * GRID_SIZE
   );
 }
-function logpt(prefix: string, point: ActrPoint3): void {
-  actr_log(`${prefix} ${point}`);
-}
 
-function currentGrid(): ActrPoint3 {
-  return togrid(new ActrPoint3(
-    ftoi(camera.position.x),
-    ftoi(camera.position.y),
-    ftoi(camera.position.z)
+let lastGrid: ActrPoint3L = new ActrPoint3L(0, 0, 0);
+function currentGrid(): ActrPoint3L {
+  return togrid(new ActrPoint3D(
+    camera.position.x,
+    camera.position.y,
+    camera.position.z
   ));
 }
-export function actr_init(w: i32, h: i32): void {
-  actr_three_init();
 
-  scene = new Scene();
-  camera = new PerspectiveCamera(90, 0.1, 50000.1)
-  camera.position = new Vector3(0, 0, 0)
+let scene!: Scene;
+let camera!: PerspectiveCamera;
+let services!: ServiceProvider;
+let tree!: ActrOctree;
+export function actr_init(w: i32, h: i32): void {
+
+  actr_three_init();
+  services = initializeServiceProvider();
+  
+  camera.position = new ActrPoint3F(0, 0, 0)
   camera.lookAt(0, 0, 0);
-  tree = new ActrOctree(true, -32, -32, 32, 64, null, scene);
+  //tree = services.getService<ActrOctree>(Services.ActrOctree);
+
 
   lastGrid = currentGrid();
   initArea(lastGrid);
@@ -122,8 +143,8 @@ export function actr_init(w: i32, h: i32): void {
   // light2 = new DirectionalLight(0x000000);
 
 
-  lightDirectional1.position = new Vector3(1000, -10, 0);
-  lightDirectional2.position = new Vector3(-1000, 10, 0);
+  lightDirectional1.position = new ActrPoint3F(1000, -10, 0);
+  lightDirectional2.position = new ActrPoint3F(-1000, 10, 0);
 
   scene.add(lightDirectional1);
   scene.add(lightDirectional2);
@@ -173,16 +194,16 @@ export function actr_pointer_tap(x: i32, y: i32): void {
 
 }
 
-function initArea(grid: ActrPoint3): void {
+function initArea(grid: ActrPoint3L): void {
   return;
   for (let x = grid.x - 1; x < grid.x + 2; x++) {
     for (let y = grid.y - 1; y < grid.y + 2; y++) {
       for (let z = grid.z - 1; z < grid.z + 2; z++) {
-        const point = fromgrid(new ActrPoint3(x, y, z));
+        const point = fromgrid(new ActrPoint3F(x, y, z));
         const bounds = new ActrOctreeBounds(point.x, point.y, point.z, GRID_SIZE);
         const result = tree.query(bounds);
         if (result.length == 0) {
-          makeAsteroid(new Vector3(
+          makeAsteroid(new ActrPoint3F(
             (f32)(point.x + GRID_SIZE / 2),
             (f32)(point.y + GRID_SIZE / 2),
             (f32)(point.z + GRID_SIZE / 2),
@@ -196,33 +217,36 @@ function initArea(grid: ActrPoint3): void {
 let step: i32 = 0;
 
 function br(): f32 {
-  return (f32)(((Math.random() + Math.random() + Math.random()) / 3 * 2 - 1) * 256);
+  return (f32)(((Math.random() + Math.random() + Math.random()) / 3 * 2 - 1) * 512);
 }
-const worldVelocity = new Vector3(0, 0, 0);
+const worldVelocity = new ActrPoint3F(0, 0, 0);
 let added: i32 = 0;
 export function actr_step(delta: f32): void {
-  if (step % 1000 == 0) {
-    actr_log(`asteroid count ${asteroids.length}`);
-  }
   step++;
   const nextGrid = currentGrid();
   if (!lastGrid.equals(nextGrid)) {
-    initArea(nextGrid);
+    // initArea(nextGrid);
     lastGrid = nextGrid;
   }
 
-  let rotation = new Vector3(0, 0, 0);
+  let rotation = new ActrPoint3F(0, 0, 0);
 
-  const acceleration = new Vector3(0, 0, 0);
+  const acceleration = new ActrPoint3F(0, 0, 0);
   let rotate = false;
   let move = false;
 
-  if (added < 100) {
+  if (added < 512) {
+    for (let i = 0; i < 10; i++) {
+      if (makeAsteroid(new ActrPoint3F(br(), br(), br()))) added++;
+      if (added >= 1024) break;
+      if (added % 32 == 0)actr_log(`added ${added} asteroids`);
+    }//const nc = Cube.makeSimple(1, br(), br(), br(), 0xff00ff);
+    //nc.addToScene(scene);
+    //nc.addToTree(tree);
+
+  } else if (added == 512) {
+    actr_log(`added ${added} asteroids`);
     added++;
-    const nc = Cube.makeSimple(1, br(), br(), br(), 0xff00ff);
-    nc.addToScene(scene);
-    nc.addToTree(tree);
-    
   }
   if (insertCube) {
     const nc = Cube.makeSimple(1, camera.position.x, camera.position.y, camera.position.z, 0xff00ff);
@@ -277,6 +301,9 @@ export function actr_step(delta: f32): void {
   if (move) {
     worldVelocity.addIn(camera.toWorld(acceleration).subtract(camera.position));
   }
+  worldVelocity.x *= 0.99;
+  worldVelocity.y *= 0.99;
+  worldVelocity.z *= 0.99;
   camera.position = camera.position.add(worldVelocity);
 
   actr_three_render();
