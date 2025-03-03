@@ -8,10 +8,10 @@ if ($local -eq "local") {
     $server = "https://localhost:7086/api/Wasm/Upload/81pnshodoodpzjlqg6nv78mt79k3ezzks1i7b6i4vdycpulq7o"
 }
 else {
-    $server = "https://www.d1ag0n.com/api/Wasm/Upload/"
+    $server = "https://www.d1ag0n.com/api/Wasm/Upload/0"
 }
     
-npx asc ./assembly/index.ts
+npx asc ./assembly/index.ts --debug --enable reference-types --enable gc
 
 if ($LastExitCode -eq 0) {
     if ($local -eq "local") {
