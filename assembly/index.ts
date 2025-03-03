@@ -1,20 +1,15 @@
 import {
-  actr_log, actr_three_init, actr_three_render, ActrOctree, ActrPoint3D,
-  ActrPoint3F, ActrPoint3I, ActrPoint3L, ActrSize3I, AmbientLight, DirectionalLight,
-  DTOL,
-  FTOI,
-  FTOL,
-  PerlinNoise, PerspectiveCamera, Scene, SurfaceNet, SurfaceNetGenerator,
+  actr_log, actr_performance, actr_three_init, actr_three_render, ActrOctree, ActrPoint3, 
+  DirectionalLight, DTOL, FTOI, FTOL, PerlinNoise, 
+  PerspectiveCamera, Scene, SurfaceNet, SurfaceNetGenerator
 } from '@actr-wasm/as';
 import { Cube } from '@actr-wasm/as/src/cube';
 import { ActrOctreeBounds } from '@actr-wasm/as/src/octree-bounds';
 import { ActrOctreeLeaf } from '@actr-wasm/as/src/octree-leaf';
-import { results } from './test-octree';
 import { ServiceProvider } from './service-container/service-provider';
 import { initializeServiceProvider, Services } from './service-container/container';
 
 export { actr_construct } from '@actr-wasm/as';
-
 
 // let geo!: BoxGeometry;
 
@@ -26,7 +21,6 @@ let cubeZ!: Cube;
 
 let lightDirectional1!: DirectionalLight;
 let lightDirectional2!: DirectionalLight;
-
 
 // let light2!: DirectionalLight;
 
@@ -48,16 +42,17 @@ function sinWave(x: f32, y: f32, z: f32): f32 {
   return (f32)(Math.sin(x) + Math.sin(y) + Math.sin(z));
 }
 
-const noise: PerlinNoise = new PerlinNoise(true);;
-
-
-
 const asteroids = new Array<SurfaceNet>();
-function makeAsteroid(position: ActrPoint3F): bool {
+function makeAsteroid(position: ActrPoint3<f32>): bool {
 
-  const area = new ActrOctreeBounds(FTOL(position.x) - 3, FTOL(position.y) - 3, FTOL(position.z) + 3, 6);
+  const areaHalfSize: f32 = 4;
+  const area = new ActrOctreeBounds(position.addXYZ(-areaHalfSize, -areaHalfSize, -areaHalfSize).to<i64>(), (i64)(areaHalfSize * 2));
+  const start = actr_performance();
 
   const result = tree.query(area);
+
+  const end = actr_performance();
+  actr_log(`perf = ${end - start}`);
   if (result.length) return false;
   const row1 = StaticArray.fromArray<f32>([-1.0, 1.0, 0.3]);
   const dims = StaticArray.fromArray([row1, row1, row1]);
@@ -67,12 +62,8 @@ function makeAsteroid(position: ActrPoint3F): bool {
   surfaceNet.position = position;
   surfaceNet.addToScene(services.getService<Scene>(Services.Scene));
   const leaf = new ActrOctreeLeaf(
-    DTOL(Math.floor(position.x - surfaceNet.size.w / 2)),
-    DTOL(Math.floor(position.y - surfaceNet.size.h / 2)),
-    DTOL(Math.ceil(position.z + surfaceNet.size.d / 2)),
-    FTOI(Mathf.max(surfaceNet.size.w + 1, 2)),
-    FTOI(Mathf.max(surfaceNet.size.h + 1, 2)),
-    FTOI(Mathf.max(surfaceNet.size.d + 1, 2)),
+    position.addXYZ(surfaceNet.size.x / -2, surfaceNet.size.y / -2, surfaceNet.size.z / -2).to<i64>(),
+    surfaceNet.size.addXYZ(1, 1, 1).max(2, 2, 2).to<i32>(),
     surfaceNet.identity
   );
   //actr_log(`${leaf}`);
@@ -88,43 +79,48 @@ function logit(val: f32): void {
 }
 
 const GRID_SIZE: i64 = 512;
-function togrid(point: ActrPoint3D): ActrPoint3L {
+function togrid(point: ActrPoint3<f64>): ActrPoint3<i64> {
   const x = DTOL(point.x);
   const y = DTOL(point.y);
   const z = DTOL(point.z);
-  return new ActrPoint3L(
+  return new ActrPoint3<i64>(
     (x < 0 ? (x - GRID_SIZE) : x) / GRID_SIZE,
     (y < 0 ? (y - GRID_SIZE) : y) / GRID_SIZE,
     (z < 0 ? (z - GRID_SIZE) : z) / GRID_SIZE,
   );
 }
-function fromgrid(point: ActrPoint3I): ActrPoint3D {
-  return new ActrPoint3D(
+function fromgrid(point: ActrPoint3<i32>): ActrPoint3<f64> {
+  return new ActrPoint3<f64>(
     point.x * GRID_SIZE,
     point.y * GRID_SIZE,
     point.z * GRID_SIZE
   );
 }
 
-let lastGrid: ActrPoint3L = new ActrPoint3L(0, 0, 0);
-function currentGrid(): ActrPoint3L {
-  return togrid(new ActrPoint3D(
+let lastGrid: ActrPoint3<i64> = new ActrPoint3<i64>(0, 0, 0);
+function currentGrid(): ActrPoint3<i64> {
+  return togrid(new ActrPoint3<f64>(
     camera.position.x,
     camera.position.y,
     camera.position.z
   ));
 }
 
+let services!: ServiceProvider;
 let scene!: Scene;
 let camera!: PerspectiveCamera;
-let services!: ServiceProvider;
 let tree!: ActrOctree;
-export function actr_init(w: i32, h: i32): void {
+let noise!: PerlinNoise;
 
+export function actr_init(w: i32, h: i32): void {
   actr_three_init();
   services = initializeServiceProvider();
-  
-  camera.position = new ActrPoint3F(0, 0, 0)
+  camera = services.getService<PerspectiveCamera>(Services.PerspectiveCamera);
+  scene = services.getService<Scene>(Services.Scene);
+  tree = services.getService<ActrOctree>(Services.ActrOctree);
+  noise = services.getService<PerlinNoise>(Services.PerlinNoise);
+
+  camera.position = new ActrPoint3<f32>(0, 0, 0);
   camera.lookAt(0, 0, 0);
   //tree = services.getService<ActrOctree>(Services.ActrOctree);
 
@@ -143,8 +139,8 @@ export function actr_init(w: i32, h: i32): void {
   // light2 = new DirectionalLight(0x000000);
 
 
-  lightDirectional1.position = new ActrPoint3F(1000, -10, 0);
-  lightDirectional2.position = new ActrPoint3F(-1000, 10, 0);
+  lightDirectional1.position = new ActrPoint3<f32>(1000, -10, 0);
+  lightDirectional2.position = new ActrPoint3<f32>(-1000, 10, 0);
 
   scene.add(lightDirectional1);
   scene.add(lightDirectional2);
@@ -152,16 +148,16 @@ export function actr_init(w: i32, h: i32): void {
   //actr_three_scene_add(light2.identity);
   //actr_three_scene_add(roid.identity);
 
-  cubeO = Cube.makeSimple(0.1, 0, 0, 0, 0xffffff);
+  cubeO = Cube.makeSimple(new ActrPoint3<f32>(0, 0, 0), 1, 0xffffff);
   //cubeO.addToScene(scene);
 
-  cubeX = Cube.makeSimple(1, 110, 0, 0, 0xff0000);
+  cubeX = Cube.makeSimple(new ActrPoint3<f32>(110, 0, 0), 1, 0xff0000);
   cubeX.addToScene(scene);
 
-  cubeY = Cube.makeSimple(1, 0, 110, 0, 0x00ff00);
+  cubeY = Cube.makeSimple(new ActrPoint3<f32>(0, 110, 0), 1, 0x00ff00);
   cubeY.addToScene(scene);
 
-  cubeZ = Cube.makeSimple(1, 0, 0, -110, 0x0000ff);
+  cubeZ = Cube.makeSimple(new ActrPoint3<f32>(0, 0, 110), 1, 0x0000ff);
   cubeZ.addToScene(scene);
 
 }
@@ -194,16 +190,16 @@ export function actr_pointer_tap(x: i32, y: i32): void {
 
 }
 
-function initArea(grid: ActrPoint3L): void {
+function initArea(grid: ActrPoint3<i64>): void {
   return;
   for (let x = grid.x - 1; x < grid.x + 2; x++) {
     for (let y = grid.y - 1; y < grid.y + 2; y++) {
       for (let z = grid.z - 1; z < grid.z + 2; z++) {
-        const point = fromgrid(new ActrPoint3F(x, y, z));
-        const bounds = new ActrOctreeBounds(point.x, point.y, point.z, GRID_SIZE);
+        const point = fromgrid(new ActrPoint3<f32>(x, y, z));
+        const bounds = new ActrOctreeBounds(point, GRID_SIZE);
         const result = tree.query(bounds);
         if (result.length == 0) {
-          makeAsteroid(new ActrPoint3F(
+          makeAsteroid(new ActrPoint3<f32>(
             (f32)(point.x + GRID_SIZE / 2),
             (f32)(point.y + GRID_SIZE / 2),
             (f32)(point.z + GRID_SIZE / 2),
@@ -217,11 +213,14 @@ function initArea(grid: ActrPoint3L): void {
 let step: i32 = 0;
 
 function br(): f32 {
-  return (f32)(((Math.random() + Math.random() + Math.random()) / 3 * 2 - 1) * 512);
+  return (f32)(((Math.random() + Math.random() + Math.random()) / 3 * 2 - 1) * 128);
 }
-const worldVelocity = new ActrPoint3F(0, 0, 0);
+let worldVelocity = new ActrPoint3<f32>(0, 0, 0);
 let added: i32 = 0;
+
+const toAdd = 512;
 export function actr_step(delta: f32): void {
+
   step++;
   const nextGrid = currentGrid();
   if (!lastGrid.equals(nextGrid)) {
@@ -229,81 +228,79 @@ export function actr_step(delta: f32): void {
     lastGrid = nextGrid;
   }
 
-  let rotation = new ActrPoint3F(0, 0, 0);
+  let rotation = new ActrPoint3<f32>(0, 0, 0);
 
-  const acceleration = new ActrPoint3F(0, 0, 0);
+  let acceleration = new ActrPoint3<f32>(0, 0, 0);
   let rotate = false;
   let move = false;
 
-  if (added < 512) {
-    for (let i = 0; i < 10; i++) {
-      if (makeAsteroid(new ActrPoint3F(br(), br(), br()))) added++;
-      if (added >= 1024) break;
+  if (added < toAdd) {
+    for (let i = 0; i < 1; i++) {
+      if (makeAsteroid(new ActrPoint3<f32>(br(), br(), br()))) added++;
+      if (added >= toAdd) break;
       if (added % 32 == 0)actr_log(`added ${added} asteroids`);
     }//const nc = Cube.makeSimple(1, br(), br(), br(), 0xff00ff);
     //nc.addToScene(scene);
     //nc.addToTree(tree);
 
-  } else if (added == 512) {
+  } else if (added == toAdd) {
     actr_log(`added ${added} asteroids`);
     added++;
   }
   if (insertCube) {
-    const nc = Cube.makeSimple(1, camera.position.x, camera.position.y, camera.position.z, 0xff00ff);
+    const nc = Cube.makeSimple(camera.position, 1, 0xff00ff);
     nc.addToScene(scene);
     nc.addToTree(tree);
     insertCube = false;
   }
+  // left right
   if (keyboard[1]) {
     rotate = true;
-    rotation.y += delta;
+    rotation = rotation.addXYZ(0, delta, 0);
   } else if (keyboard[2]) {
     rotate = true;
-    rotation.y -= delta;
+    rotation = rotation.addXYZ(0, -delta, 0);
   }
 
-  // 119 97 115 100
   if (keyboard[119]) {
     move = true;
-    acceleration.z -= delta;
+    acceleration = acceleration.addXYZ(0, 0, delta);
   } else if (keyboard[115]) {
     move = true;
-    acceleration.z += delta;
+    acceleration = acceleration.addXYZ(0, 0, -delta);
   }
 
   if (keyboard[97]) {
     move = true;
-    acceleration.x -= delta;
+    acceleration = acceleration.addXYZ(-delta, 0, 0);
   } else if (keyboard[100]) {
     move = true;
-    acceleration.x += delta;
+    acceleration = acceleration.addXYZ(delta, 0, 0);
   }
 
   if (keyboard[5]) {
     rotate = true;
-    rotation.x -= delta;
+    rotation = rotation.addXYZ(-delta, 0, 0);
   } else if (keyboard[6]) {
     rotate = true;
-    rotation.x += delta;
+    rotation = rotation.addXYZ(delta, 0, 0);
   }
 
   if (keyboard[113]) {
     rotate = true;
-    rotation.z += delta;
+    rotation = rotation.addXYZ(0, 0, -delta);
   } else if (keyboard[101]) {
     rotate = true;
-    rotation.z -= delta;
+    rotation = rotation.addXYZ(0, 0, delta);
   }
 
   if (rotate) {
     camera.rotate(rotation.x, rotation.y, rotation.z);
   }
   if (move) {
-    worldVelocity.addIn(camera.toWorld(acceleration).subtract(camera.position));
+    worldVelocity = worldVelocity.add(camera.toWorld(acceleration).subtract(camera.position));
   }
-  worldVelocity.x *= 0.99;
-  worldVelocity.y *= 0.99;
-  worldVelocity.z *= 0.99;
+  worldVelocity = worldVelocity.multiply(0.99);
   camera.position = camera.position.add(worldVelocity);
 
   actr_three_render();
