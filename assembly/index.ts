@@ -1,13 +1,17 @@
 import {
-  actr_log, actr_performance, actr_three_init, actr_three_render, ActrOctree, ActrPoint3, 
-  DirectionalLight, DTOL, FTOI, FTOL, PerlinNoise, 
-  PerspectiveCamera, Scene, SurfaceNet, SurfaceNetGenerator
+  actr_log, actr_three_init, actr_three_render, ActrOctree, ActrPoint3, 
+  DirectionalLight, PerlinNoise, 
+  PerspectiveCamera, Scene, SurfaceNet, SurfaceNetGenerator,
+  TOL
 } from '@actr-wasm/as';
 import { Cube } from '@actr-wasm/as/src/cube';
 import { ActrOctreeBounds } from '@actr-wasm/as/src/octree-bounds';
 import { ActrOctreeLeaf } from '@actr-wasm/as/src/octree-leaf';
 import { ServiceProvider } from './service-container/service-provider';
 import { initializeServiceProvider, Services } from './service-container/container';
+import { Missile } from './services/missile';
+import { PhysicalObject } from './services/physical-object';
+import { ProgramObject } from './services/program-object';
 
 export { actr_construct } from '@actr-wasm/as';
 
@@ -47,14 +51,11 @@ function makeAsteroid(position: ActrPoint3<f32>): bool {
 
   const areaHalfSize: f32 = 4;
   const area = new ActrOctreeBounds(position.addXYZ(-areaHalfSize, -areaHalfSize, -areaHalfSize).to<i64>(), (i64)(areaHalfSize * 2));
-  const start = actr_performance();
 
   const result = tree.query(area);
 
-  const end = actr_performance();
-  actr_log(`perf = ${end - start}`);
   if (result.length) return false;
-  const row1 = StaticArray.fromArray<f32>([-1.0, 1.0, 0.3]);
+  const row1 = StaticArray.fromArray<f32>([-1.0, 1.0, 0.2]);
   const dims = StaticArray.fromArray([row1, row1, row1]);
   const gen = new SurfaceNetGenerator();
   const surfaceNet = gen.makeData(dims, asteroidPointGen).generateNet();
@@ -73,16 +74,11 @@ function makeAsteroid(position: ActrPoint3<f32>): bool {
   //tree.insertSurfaceNet(surfaceNet);
 }
 
-function logit(val: f32): void {
-  const cast = (i32)(val);
-  actr_log(`${val} -> ${cast}`);
-}
-
 const GRID_SIZE: i64 = 512;
 function togrid(point: ActrPoint3<f64>): ActrPoint3<i64> {
-  const x = DTOL(point.x);
-  const y = DTOL(point.y);
-  const z = DTOL(point.z);
+  const x = TOL(point.x);
+  const y = TOL(point.y);
+  const z = TOL(point.z);
   return new ActrPoint3<i64>(
     (x < 0 ? (x - GRID_SIZE) : x) / GRID_SIZE,
     (y < 0 ? (y - GRID_SIZE) : y) / GRID_SIZE,
@@ -167,13 +163,16 @@ let insertCube: bool = false;
 export function actr_key_down(key: i32): void {
 
   keyboard[key] = true;
+  if (32 == key) {
+    insertCube = true;
+  }
   // actr_log(`${key}`);
 }
 
 export function actr_key_up(key: i32): void {
   keyboard[key] = false;
   if (32 == key) {
-    insertCube = true;
+    insertCube = false;
   }
 }
 
@@ -212,13 +211,14 @@ function initArea(grid: ActrPoint3<i64>): void {
 
 let step: i32 = 0;
 
+const toAdd = 2 * 2 * 2 * 2 * 2;
 function br(): f32 {
-  return (f32)(((Math.random() + Math.random() + Math.random()) / 3 * 2 - 1) * 128);
+  return (f32)(((Math.random() + Math.random() + Math.random()) / 3 * 2 - 1) * toAdd);
 }
 let worldVelocity = new ActrPoint3<f32>(0, 0, 0);
 let added: i32 = 0;
 
-const toAdd = 512;
+
 export function actr_step(delta: f32): void {
 
   step++;
@@ -238,7 +238,6 @@ export function actr_step(delta: f32): void {
     for (let i = 0; i < 1; i++) {
       if (makeAsteroid(new ActrPoint3<f32>(br(), br(), br()))) added++;
       if (added >= toAdd) break;
-      if (added % 32 == 0)actr_log(`added ${added} asteroids`);
     }//const nc = Cube.makeSimple(1, br(), br(), br(), 0xff00ff);
     //nc.addToScene(scene);
     //nc.addToTree(tree);
@@ -248,10 +247,14 @@ export function actr_step(delta: f32): void {
     added++;
   }
   if (insertCube) {
-    const nc = Cube.makeSimple(camera.position, 1, 0xff00ff);
-    nc.addToScene(scene);
-    nc.addToTree(tree);
-    insertCube = false;
+    const missile = services.getService<Missile>(Services.Missile);
+    missile.init();
+    missile.services.getExistingService<PhysicalObject>(Services.PhysicalObject).position = camera.position.to<f64>();
+
+    // const nc = Cube.makeSimple(camera.position, 1, 0xff00ff);
+    // nc.addToScene(scene);
+    // nc.addToTree(tree);
+    
   }
   // left right
   if (keyboard[1]) {
@@ -303,5 +306,8 @@ export function actr_step(delta: f32): void {
   worldVelocity = worldVelocity.multiply(0.99);
   camera.position = camera.position.add(worldVelocity);
 
+  for (let i = 0; i < ProgramObject.objects.length; i++) {
+    ProgramObject.objects[i].update(delta);
+  }
   actr_three_render();
 }

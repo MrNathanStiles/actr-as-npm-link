@@ -1,9 +1,7 @@
-import { ServiceProvider } from "../service-container/service-provider";
-import { ProgramObject } from "../interface";
 import { ActrPoint3 } from "@actr-wasm/as/src/point";
+import { ProgramObject } from "./program-object";
 
-export class PhysicalObject implements ProgramObject {
-    private static readonly objects: Array<PhysicalObject> = new Array<PhysicalObject>();
+export class PhysicalObject extends ProgramObject {
 
     public position: ActrPoint3<f64> = ActrPoint3.zero<f64>();
     public velocity: ActrPoint3<f64> = ActrPoint3.zero<f64>();
@@ -13,17 +11,13 @@ export class PhysicalObject implements ProgramObject {
     
     public mass: f64 = 1;
 
-    public constructor(
-        private readonly services: ServiceProvider
-    ) {
-
-
-
-    }
-
     public update(delta: f64): void {
-        this.position.addMutate(this.velocity.multiply(delta));
+        this.position = this.position.add(this.velocity.multiply(delta));
+        this.rotation = this.rotation.add(this.angularVelocity.multiply(delta));
     }
 
+    public applyImpulse(impulse: ActrPoint3<f64>): void {
+        this.velocity = this.velocity.add(impulse.divide(this.mass));
+    }
 
 }
