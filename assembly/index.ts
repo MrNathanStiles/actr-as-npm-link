@@ -1,4 +1,5 @@
 import {
+  _actr_sanity,
   actr_log, actr_three_init, actr_three_render, ActrOctree, ActrPoint3, 
   DirectionalLight, PerlinNoise, 
   PerspectiveCamera, Scene, SurfaceNet, SurfaceNetGenerator,
@@ -8,7 +9,7 @@ import { Cube } from '@actr-wasm/as/src/cube';
 import { ActrOctreeBounds } from '@actr-wasm/as/src/octree-bounds';
 import { ActrOctreeLeaf } from '@actr-wasm/as/src/octree-leaf';
 import { ServiceProvider } from './service-container/service-provider';
-import { initializeServiceProvider, Services } from './service-container/container';
+import { initializeServiceProvider } from './service-container/container';
 import { Missile } from './services/missile';
 import { PhysicalObject } from './services/physical-object';
 import { ProgramObject } from './services/program-object';
@@ -29,7 +30,7 @@ let lightDirectional2!: DirectionalLight;
 // let light2!: DirectionalLight;
 
 function spherePointGen(x: f32, y: f32, z: f32): f32 {
-  const result = x * x + y * y + z * z - 1;
+  const result = x * x + y * y + z * z - 0.9;
   //actr_log(`sph ${x},${y},${z} = ${result}`);
   return result;
 }
@@ -58,20 +59,18 @@ function makeAsteroid(position: ActrPoint3<f32>): bool {
   const row1 = StaticArray.fromArray<f32>([-1.0, 1.0, 0.2]);
   const dims = StaticArray.fromArray([row1, row1, row1]);
   const gen = new SurfaceNetGenerator();
-  const surfaceNet = gen.makeData(dims, asteroidPointGen).generateNet();
+  const surfaceNet = gen.makeData(dims, spherePointGen).generateNet();
   asteroids.push(surfaceNet);
   surfaceNet.position = position;
-  surfaceNet.addToScene(services.getService<Scene>(Services.Scene));
+  surfaceNet.addToScene(services.getService<Scene>());
   const leaf = new ActrOctreeLeaf(
     position.addXYZ(surfaceNet.size.x / -2, surfaceNet.size.y / -2, surfaceNet.size.z / -2).to<i64>(),
     surfaceNet.size.addXYZ(1, 1, 1).max(2, 2, 2).to<i32>(),
     surfaceNet.identity
   );
-  //actr_log(`${leaf}`);
   tree.insert(leaf);
   noise.shuffle();
   return true;
-  //tree.insertSurfaceNet(surfaceNet);
 }
 
 const GRID_SIZE: i64 = 512;
@@ -109,16 +108,24 @@ let tree!: ActrOctree;
 let noise!: PerlinNoise;
 
 export function actr_init(w: i32, h: i32): void {
+  _actr_sanity(2);
+  let test: u64 = 1;
+  for (let i = 0; i < 64; i++) {
+    const result = test *= 2;
+    //actr_log(`#${i} test ${result}`);
+  }
+  
   actr_three_init();
   services = initializeServiceProvider();
-  camera = services.getService<PerspectiveCamera>(Services.PerspectiveCamera);
-  scene = services.getService<Scene>(Services.Scene);
-  tree = services.getService<ActrOctree>(Services.ActrOctree);
-  noise = services.getService<PerlinNoise>(Services.PerlinNoise);
+
+  camera = services.getService<PerspectiveCamera>();
+  scene = services.getService<Scene>();
+  tree = services.getService<ActrOctree>();
+  noise = services.getService<PerlinNoise>();
 
   camera.position = new ActrPoint3<f32>(0, 0, 0);
   camera.lookAt(0, 0, 0);
-  //tree = services.getService<ActrOctree>(Services.ActrOctree);
+  tree = services.getService<ActrOctree>();
 
 
   lastGrid = currentGrid();
@@ -131,7 +138,7 @@ export function actr_init(w: i32, h: i32): void {
   // lightAmbient = new AmbientLight(0xffffff, 0.01);
   //lightDirectional1 = new DirectionalLight(0xd900ff, 0.5);
   lightDirectional1 = new DirectionalLight(0xffffff, 1);
-  lightDirectional2 = new DirectionalLight(0xffffff, 0.01);
+  lightDirectional2 = new DirectionalLight(0xffffff, 1);
   // light2 = new DirectionalLight(0x000000);
 
 
@@ -247,9 +254,9 @@ export function actr_step(delta: f32): void {
     added++;
   }
   if (insertCube) {
-    const missile = services.getService<Missile>(Services.Missile);
+    const missile = services.getService<Missile>();
     missile.init();
-    missile.services.getExistingService<PhysicalObject>(Services.PhysicalObject).position = camera.position.to<f64>();
+    missile.services.getService<PhysicalObject>().position = camera.position.to<f64>();
 
     // const nc = Cube.makeSimple(camera.position, 1, 0xff00ff);
     // nc.addToScene(scene);
@@ -306,8 +313,7 @@ export function actr_step(delta: f32): void {
   worldVelocity = worldVelocity.multiply(0.99);
   camera.position = camera.position.add(worldVelocity);
 
-  for (let i = 0; i < ProgramObject.objects.length; i++) {
-    ProgramObject.objects[i].update(delta);
-  }
+  ProgramObject.updateAll(delta);
+
   actr_three_render();
 }

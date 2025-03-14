@@ -1,7 +1,7 @@
 import { ActrPoint3 } from "@actr-wasm/as/src/point";
-import { ProgramObject } from "./program-object";
+import { GameObject } from "./game-object";
 
-export class PhysicalObject extends ProgramObject {
+export class PhysicalObject extends GameObject {
 
     public position: ActrPoint3<f64> = ActrPoint3.zero<f64>();
     public velocity: ActrPoint3<f64> = ActrPoint3.zero<f64>();
@@ -11,7 +11,7 @@ export class PhysicalObject extends ProgramObject {
     
     public mass: f64 = 1;
 
-    public update(delta: f64): void {
+    protected update(delta: f64): void {
         this.position = this.position.add(this.velocity.multiply(delta));
         this.rotation = this.rotation.add(this.angularVelocity.multiply(delta));
     }

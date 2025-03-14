@@ -1,5 +1,4 @@
 import { ActrPoint3 } from "@actr-wasm/as/src/point";
-import { Services } from "../service-container/container";
 import { PhysicalObject } from "./physical-object";
 import { SphereGeometry } from "@actr-wasm/as/src/three-geometry";
 import { MeshStandardMaterial } from "@actr-wasm/as/src/three-material";
@@ -10,32 +9,33 @@ import { Scene } from "@actr-wasm/as/src/three-scene";
 export class Missile extends GameObject {
     private fuel: f64 = 0;
 
+    private disposed: bool = false;
+
     public dispose(): void {
-        const mesh = this.services.getService<Mesh>(Services.Mesh);
-        this.services.getService<Scene>(Services.Scene).remove(mesh);
-        mesh.geometry.dispose();
+        const mesh = this.services.getService<Mesh>();
+        this.services.getService<Scene>().remove(mesh);
+        this.destroy();
     }
 
     public init(): void {
-        const po = this.services.getService<PhysicalObject>(Services.PhysicalObject);
-        po.mass = 0.001;
+        const po = this.services.getService<PhysicalObject>();
+        po.mass = 0.1;
         this.fuel = 1;
         const geometry = new SphereGeometry(0.1, 5, 5);
-        const material = this.services.getService<MeshStandardMaterial>(Services.Material);
+        const material = this.services.getService<MeshStandardMaterial>();
         const mesh = new Mesh(geometry, material)
-        this.services.add(Services.Mesh, mesh);
-        this.services.getService<Scene>(Services.Scene).add(mesh);
+        this.services.addService(mesh);
+        this.services.getService<Scene>().add(mesh);
     }
 
-    public update(delta: f64): void {
-        const po = this.services.getExistingService<PhysicalObject>(Services.PhysicalObject);
+    protected update(delta: f64): void {
+        const po = this.services.getService<PhysicalObject>();
         this.fuel -= delta;
         if (this.fuel > 0) {
             po.applyImpulse(new ActrPoint3<f64>(0, 0, delta));
         } else {
             this.dispose();
         }
-        po.update(delta);
-        this.services.getExistingService<Mesh>(Services.Mesh).position = po.position.to<f32>();
+        this.services.getService<Mesh>().position = po.position.to<f32>();
     }
 }
